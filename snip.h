@@ -619,7 +619,7 @@ AtomPtr make_env () {
 	add_op ("sqrt", &fn_sqrt, 1, env);
 	add_op ("abs", &fn_abs, 1, env);
 	add_op ("floor", &fn_floor, 1, env);
-	add_op ("std::string", &fn_string, 2, env);
+	add_op ("string", &fn_string, 2, env);
 	add_op ("exec", &fn_exec, 1, env);
 	add_op ("exit", &fn_exit, 0, env);
 	return env;
