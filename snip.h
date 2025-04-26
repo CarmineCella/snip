@@ -128,7 +128,6 @@ void error (const std::string& msg, AtomPtr n) {
     }	
 	throw std::runtime_error (err.str ());
 }
-
 AtomPtr args_check (AtomPtr node, unsigned args) {
 	std::stringstream err;
 	err << "insufficient number of arguments (required " << args << ", got " << node->tail.size () << ")";
@@ -289,7 +288,6 @@ AtomPtr fn_apply (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr fn_eval (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr eval (AtomPtr node, AtomPtr env) {
 	StackGuard guard(node); 
-
 	while (true) {
 		if (is_nil (node)) return make_atom ();
 		if (node->type == SYMBOL && node->lexeme.size ()) return assoc (node, env);
@@ -664,4 +662,3 @@ void repl (std::istream& in, std::ostream& out, AtomPtr env) {
 #endif // SNIP_H
 
 // eof
-

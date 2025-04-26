@@ -1,9 +1,6 @@
-
-
-
-e
+(load "stdlib.scm")
 (define a 200)
-(define double (lambda (x) (* x x)))
+(define double (lambda (x) (* x x) ))
 
 (print (double a) " hallo 
 
@@ -11,10 +8,10 @@ e
 
 	world!\n")
 
-sds
+(double 3)
 
 
-fds
-;
-fdssf
-;
+(print (map (lambda (x) (+ x 1)) (list g 1 2 3)))
+
+
+s
