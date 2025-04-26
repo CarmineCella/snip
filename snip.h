@@ -248,6 +248,7 @@ bool atom_eq (AtomPtr a, AtomPtr b) {
 			return a->op == b->op;
 		break;
 	}
+	return false; // dummy
 }
 AtomPtr assoc (AtomPtr node, AtomPtr env) {
 	for (unsigned i = 1; i < env->tail.size (); ++i) {
@@ -523,7 +524,6 @@ MAKE_SINGOP (std::abs, fn_abs);
 MAKE_SINGOP (std::floor, fn_floor);
 
 AtomPtr fn_mean(AtomPtr node, AtomPtr env) {
-    args_check(node, 1);
     AtomPtr list = type_check(node->tail.at(0), LIST);
     if (list->tail.empty()) return make_atom(0.0);
     Real sum = 0;
@@ -533,7 +533,6 @@ AtomPtr fn_mean(AtomPtr node, AtomPtr env) {
     return make_atom(sum / list->tail.size());
 }
 AtomPtr fn_variance(AtomPtr node, AtomPtr env) {
-    args_check(node, 1);
     AtomPtr list = type_check(node->tail.at(0), LIST);
     if (list->tail.size() <= 1) return make_atom(0.0);
     Real m = type_check(fn_mean(node, env), NUMBER)->value;
@@ -549,7 +548,6 @@ AtomPtr fn_stddev(AtomPtr node, AtomPtr env) {
     return make_atom(std::sqrt(type_check(var, NUMBER)->value));
 }
 AtomPtr fn_distance(AtomPtr node, AtomPtr env) {
-    args_check(node, 2);
     AtomPtr a = type_check(node->tail.at(0), LIST);
     AtomPtr b = type_check(node->tail.at(1), LIST);
     if (a->tail.size() != b->tail.size()) error("vectors must have same size", node);
@@ -561,7 +559,6 @@ AtomPtr fn_distance(AtomPtr node, AtomPtr env) {
     return make_atom(std::sqrt(sum));
 }
 AtomPtr fn_linear_regression(AtomPtr node, AtomPtr env) {
-    args_check(node, 2);
     AtomPtr x_list = type_check(node->tail.at(0), LIST);
     AtomPtr y_list = type_check(node->tail.at(1), LIST);
     if (x_list->tail.size() != y_list->tail.size())
@@ -635,7 +632,6 @@ AtomPtr fn_linear_regression(AtomPtr node, AtomPtr env) {
     return model;
 }
 AtomPtr fn_predict_linear(AtomPtr node, AtomPtr env) {
-    args_check(node, 2);
     AtomPtr model = type_check(node->tail.at(0), LIST);
     AtomPtr x = node->tail.at(1);
     Real y = type_check(model->tail.at(0), NUMBER)->value; // intercept
@@ -655,14 +651,13 @@ AtomPtr fn_predict_linear(AtomPtr node, AtomPtr env) {
     return make_atom(y);
 }
 AtomPtr fn_kmeans(AtomPtr node, AtomPtr env) {
-    args_check(node, 2);
     AtomPtr points = type_check(node->tail.at(0), LIST);
     AtomPtr k_atom = type_check(node->tail.at(1), NUMBER);
     int k = static_cast<int>(k_atom->value);
     if (k <= 0) error("k must be > 0", node);
 
     std::vector<Real> centers;
-    for (int i = 0; i < k && i < points->tail.size(); ++i) {
+    for (unsigned i = 0; i < (unsigned) k && i < points->tail.size(); ++i) {
         centers.push_back(type_check(points->tail[i], NUMBER)->value);
     }
 
@@ -701,15 +696,12 @@ AtomPtr fn_kmeans(AtomPtr node, AtomPtr env) {
     return result;
 }
 AtomPtr fn_knn(AtomPtr node, AtomPtr env) {
-    args_check(node, 4);
     AtomPtr train_x = type_check(node->tail.at(0), LIST);
     AtomPtr train_y = type_check(node->tail.at(1), LIST);
     AtomPtr query = type_check(node->tail.at(2), LIST);
     AtomPtr k_atom = type_check(node->tail.at(3), NUMBER);
     int k = static_cast<int>(k_atom->value);
-
     if (train_x->tail.size() != train_y->tail.size()) error("train_x and train_y must match", node);
-
     std::vector<std::pair<Real, AtomPtr>> dists;
     for (size_t i = 0; i < train_x->tail.size(); ++i) {
         AtomPtr p = type_check(train_x->tail[i], LIST);
@@ -721,15 +713,12 @@ AtomPtr fn_knn(AtomPtr node, AtomPtr env) {
         }
         dists.push_back({std::sqrt(dist), train_y->tail[i]});
     }
-
     std::sort(dists.begin(), dists.end(), [](auto& a, auto& b) { return a.first < b.first; });
-
     std::map<Real, int> votes;
-    for (int i = 0; i < k && i < dists.size(); ++i) {
+    for (unsigned i = 0; i < (unsigned) k && i < dists.size(); ++i) {
         Real label = type_check(dists[i].second, NUMBER)->value;
         votes[label]++;
     }
-
     Real best_label = 0;
     int best_count = -1;
     for (auto& kv : votes) {
@@ -767,7 +756,6 @@ bool is_power_of_two(size_t n) {
     return (n > 0) && ((n & (n-1)) == 0);
 }
 AtomPtr fn_fft(AtomPtr node, AtomPtr env) {
-    args_check(node, 1);
     AtomPtr list = type_check(node->tail.at(0), LIST);
     std::vector<Complex> data;
     for (auto& elem : list->tail) {
@@ -787,7 +775,6 @@ AtomPtr fn_fft(AtomPtr node, AtomPtr env) {
     return out;
 }
 AtomPtr fn_ifft(AtomPtr node, AtomPtr env) {
-    args_check(node, 1);
     AtomPtr list = type_check(node->tail.at(0), LIST);
     std::vector<Complex> data;
     for (auto& elem : list->tail) {
@@ -807,15 +794,12 @@ AtomPtr fn_ifft(AtomPtr node, AtomPtr env) {
     return out;
 }
 AtomPtr fn_pol2car(AtomPtr node, AtomPtr env) {
-    args_check(node, 1);
     AtomPtr list = type_check(node->tail.at(0), LIST);
-
     AtomPtr out = make_atom();
     for (auto& elem : list->tail) {
         AtomPtr pair = type_check(elem, LIST);
         Real r = type_check(pair->tail.at(0), NUMBER)->value;
         Real theta = type_check(pair->tail.at(1), NUMBER)->value;
-
         AtomPtr cartesian = make_atom();
         cartesian->tail.push_back(make_atom(r * std::cos(theta)));
         cartesian->tail.push_back(make_atom(r * std::sin(theta)));
@@ -824,15 +808,12 @@ AtomPtr fn_pol2car(AtomPtr node, AtomPtr env) {
     return out;
 }
 AtomPtr fn_car2pol(AtomPtr node, AtomPtr env) {
-    args_check(node, 1);
     AtomPtr list = type_check(node->tail.at(0), LIST);
-
     AtomPtr out = make_atom();
     for (auto& elem : list->tail) {
         AtomPtr pair = type_check(elem, LIST);
         Real x = type_check(pair->tail.at(0), NUMBER)->value;
         Real y = type_check(pair->tail.at(1), NUMBER)->value;
-
         AtomPtr polar = make_atom();
         polar->tail.push_back(make_atom(std::sqrt(x*x + y*y)));
         polar->tail.push_back(make_atom(std::atan2(y, x)));
@@ -841,7 +822,6 @@ AtomPtr fn_car2pol(AtomPtr node, AtomPtr env) {
     return out;
 }
 AtomPtr fn_conv(AtomPtr node, AtomPtr env) {
-    args_check(node, 2);
     AtomPtr a = type_check(node->tail.at(0), LIST);
     AtomPtr b = type_check(node->tail.at(1), LIST);
     std::vector<Complex> A, B;
@@ -855,7 +835,6 @@ AtomPtr fn_conv(AtomPtr node, AtomPtr env) {
     fft_compute(B, false);
     for (size_t i = 0; i < n; ++i) A[i] *= B[i];
     fft_compute(A, true);
-
     AtomPtr out = make_atom();
     for (auto& c : A) {
         out->tail.push_back(make_atom(c.real()));
@@ -863,7 +842,6 @@ AtomPtr fn_conv(AtomPtr node, AtomPtr env) {
     return out;
 }
 AtomPtr fn_dot(AtomPtr node, AtomPtr env) {
-    args_check(node, 2);
     AtomPtr a = type_check(node->tail.at(0), LIST);
     AtomPtr b = type_check(node->tail.at(1), LIST);
     const auto& atail = a->tail;
@@ -888,7 +866,6 @@ AtomPtr fn_dot(AtomPtr node, AtomPtr env) {
     return make_atom(sum0 + sum1 + sum2 + sum3);
 }
 AtomPtr fn_writewav(AtomPtr node, AtomPtr env) {
-    args_check(node, 2);
     std::string filename = type_check(node->tail.at(0), STRING)->lexeme;
     AtomPtr data = type_check(node->tail.at(1), LIST);
     uint16_t bits = 16;
@@ -945,7 +922,6 @@ AtomPtr fn_writewav(AtomPtr node, AtomPtr env) {
     return make_atom();
 }
 AtomPtr fn_readwav(AtomPtr node, AtomPtr env) {
-    args_check(node, 1);
     std::string filename = type_check(node->tail.at(0), STRING)->lexeme;
     std::ifstream file(filename, std::ios::binary);
     if (!file) error("cannot open WAV file", node);
@@ -954,7 +930,7 @@ AtomPtr fn_readwav(AtomPtr node, AtomPtr env) {
     if (std::string(header, header+4) != "RIFF" || std::string(header+8, header+12) != "WAVE")
         error("invalid WAV header", node);
     uint16_t channels = *reinterpret_cast<uint16_t*>(header + 22);
-    uint32_t samplerate = *reinterpret_cast<uint32_t*>(header + 24);
+    // uint32_t samplerate = *reinterpret_cast<uint32_t*>(header + 24);
     uint16_t bits = *reinterpret_cast<uint16_t*>(header + 34);
     if (bits != 16 && bits != 32) error("only 16-bit or 32-bit PCM supported", node);
     uint32_t data_size = *reinterpret_cast<uint32_t*>(header + 40);
@@ -981,7 +957,6 @@ AtomPtr fn_readwav(AtomPtr node, AtomPtr env) {
     }
     return result;
 }
-
 void replace (std::string &s, std::string from, std::string to) {
 	int idx = 0;
 	size_t next;
@@ -1102,20 +1077,20 @@ AtomPtr make_env () {
 	add_op ("sqrt", &fn_sqrt, 1, env);
 	add_op ("abs", &fn_abs, 1, env);
 	add_op ("floor", &fn_floor, 1, env);
-	add_op("mean", &fn_mean, 1, env);
-	add_op("variance", &fn_variance, 1, env);
-	add_op("stddev", &fn_stddev, 1, env);
-	add_op("distance", &fn_distance, 2, env);
-	add_op("kmeans", &fn_kmeans, 2, env);
-	add_op("linear-regression", &fn_linear_regression, 2, env);
-	add_op("predict-linear", &fn_predict_linear, 2, env);
-	add_op("knn", &fn_knn, 4, env);	
-	add_op("fft", &fn_fft, 1, env);
-	add_op("ifft", &fn_ifft, 1, env);
-	add_op("conv", &fn_conv, 2, env);
-	add_op("dot", &fn_dot, 2, env);
-	add_op("pol2car", &fn_pol2car, 1, env);
-	add_op("car2pol", &fn_car2pol, 1, env);	
+	add_op ("mean", &fn_mean, 1, env);
+	add_op ("variance", &fn_variance, 1, env);
+	add_op ("stddev", &fn_stddev, 1, env);
+	add_op ("distance", &fn_distance, 2, env);
+	add_op ("kmeans", &fn_kmeans, 2, env);
+	add_op ("linear-regression", &fn_linear_regression, 2, env);
+	add_op ("predict-linear", &fn_predict_linear, 2, env);
+	add_op ("knn", &fn_knn, 4, env);	
+	add_op ("fft", &fn_fft, 1, env);
+	add_op ("ifft", &fn_ifft, 1, env);
+	add_op ("conv", &fn_conv, 2, env);
+	add_op ("dot", &fn_dot, 2, env);
+	add_op ("pol2car", &fn_pol2car, 1, env);
+	add_op ("car2pol", &fn_car2pol, 1, env);	
 	add_op ("string", &fn_string, 2, env);
 	add_op ("exec", &fn_exec, 1, env);
 	add_op ("exit", &fn_exit, 0, env);
