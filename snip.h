@@ -632,7 +632,7 @@ AtomPtr make_env () {
 void repl (std::istream& in, std::ostream& out, AtomPtr env) {
 	unsigned linenum = 0;;
 	while (true) {
-		std::cout << ">> ";
+		std::cout << ">> " << std::flush;
 		try {
 			print (eval (read (in, linenum), env), std::cout) << std::endl;
 		} catch (std::exception& err) {
