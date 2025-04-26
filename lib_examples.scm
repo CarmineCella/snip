@@ -1,5 +1,7 @@
 ;; Examples for the Snip standard library
 
+(load "stdlib.scm")
+
 ;; --- map ---
 (map (lambda (x) (+ x 1)) (list 1 2 3))
 ; => (2 3 4)
@@ -9,8 +11,8 @@
 ; => 10
 
 ;; --- filter ---
-(filter (lambda (x) (eq? (mod x 2) 0)) (list 1 2 3 4))
-; => (2 4)
+(filter (lambda (x) (eq? (/ x 2) 2)) (list 4 3 3 4))
+; => (4 4)
 
 ;; --- element ---
 (element 3 (list 1 2 3 4))
@@ -51,10 +53,6 @@
 ;; --- exists ---
 (exists (lambda (x) (eq? x 3)) (list 1 2 4))
 ; => 0
-
-;; --- let ---
-(let ((x 2) (y 3)) (+ x y))
-; => 5
 
 ;; --- last ---
 (last (list 1 2 3 4))
