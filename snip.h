@@ -127,13 +127,14 @@ AtomPtr type_check (AtomPtr node, AtomType t) {
 }
 
 // lexing, parsing, evaluation
-std::string next (std::istream &in) {
+std::string next (std::istream &in, unsigned& linenum) {
 	std::stringstream accum;
 	while (!in.eof ()) {
 		char c = in.get ();
 		switch (c) {
 			case ';':
 			do { c = in.get (); } while (c != '\n' && !in.eof ());
+			++linenum;
 			break;
 			case '(': case ')': case '\'':
 				if (accum.str ().size ()) {
@@ -145,6 +146,7 @@ std::string next (std::istream &in) {
 				}
 			break;
 			case '\t': case '\n': case '\r': case ' ':
+				if (c == '\n') ++linenum;
 				if (accum.str ().size ()) return accum.str ();
 				else continue;
 			break;
@@ -156,6 +158,7 @@ std::string next (std::istream &in) {
 				accum << c;
 				while (!in.eof ()) {
 					in.get (c);
+					if (c == '\n') ++linenum;
 					if (c == '\"') break;
 					else if (c == '\\') {
 						c = in.get ();
@@ -177,13 +180,13 @@ std::string next (std::istream &in) {
 	}
 	return accum.str ();
 }
-AtomPtr read (std::istream& in) {
-	std::string token = next (in);
+AtomPtr read (std::istream& in, unsigned& linenum) {
+	std::string token = next (in, linenum);
 	if (!token.size ()) return make_atom();
 	if (token == "(") {
 		AtomPtr l = make_atom ();
 		while (!in.eof ()) {
-			AtomPtr n = read (in);
+			AtomPtr n = read (in, linenum);
 			if (n->lexeme == ")") break;
 			else l->tail.push_back (n);
 		}
@@ -191,7 +194,7 @@ AtomPtr read (std::istream& in) {
 	} else if (token == "\'") {
 		AtomPtr ll = make_atom();
 		ll->tail.push_back (make_atom ("quote"));
-		ll->tail.push_back (read (in));
+		ll->tail.push_back (read (in, linenum));
 		return ll;
 	} else if (is_number (token)) {
 		return make_atom(atof (token.c_str ()));
@@ -422,25 +425,27 @@ AtomPtr fn_print (AtomPtr node, AtomPtr env) {
 	return make_atom ("");
 }
 AtomPtr fn_read (AtomPtr node, AtomPtr env) {
+	unsigned linenum = 0;
 	if (node->tail.size ()) {
 		std::ifstream in (type_check (node->tail.at (0), STRING)->lexeme);
 		if (!in.good ()) error ("cannot open input file", node);
 		AtomPtr r = make_atom ();
 		while (!in.eof ()) {
-			AtomPtr l = read (in);
+			AtomPtr l = read (in, linenum);
 			if (!in.eof ()) r->tail.push_back (l);
 		}
 		return r;
-	} else return read (std::cin);
+	} else return read (std::cin, linenum);
 }
-AtomPtr load (std::istream& in, AtomPtr env) {
+AtomPtr load (const std::string&fname, std::istream& in, AtomPtr env) {
 	AtomPtr r;
+	unsigned linenum = 0;
 	while (!in.eof ()) {
 		try {
-			AtomPtr l = read (in);
+			AtomPtr l = read (in, linenum);
 			if (!in.eof ()) r = eval (l, env);
 		} catch (std::exception& e) {
-			std::cerr << "error: " << e.what () << std::endl;
+			std::cerr << "[" << fname << ":" << linenum << "] " << e.what () << std::endl;
 		} catch (...) {
 			std::cerr << "unknown error detected" << std::endl;
 		}
@@ -450,7 +455,7 @@ AtomPtr load (std::istream& in, AtomPtr env) {
 AtomPtr fn_load (AtomPtr node, AtomPtr env) {
 	std::ifstream in (type_check (node->tail.at (0), STRING)->lexeme);
 	if (!in.good ()) error ("cannot open input file", node);
-	return load (in, env);
+	return load (node->tail.at (0)->lexeme, in, env);
 }
 #define MAKE_BINOP(op,name, unit) \
 AtomPtr name (AtomPtr node, AtomPtr env) { \
@@ -625,10 +630,11 @@ AtomPtr make_env () {
 	return env;
 }
 void repl (std::istream& in, std::ostream& out, AtomPtr env) {
+	unsigned linenum = 0;;
 	while (true) {
 		std::cout << ">> ";
 		try {
-			print (eval (read (in), env), std::cout) << std::endl;
+			print (eval (read (in, linenum), env), std::cout) << std::endl;
 		} catch (std::exception& err) {
 			std::cerr << "error: " << err.what () << std::endl;
 		} catch (...) {
