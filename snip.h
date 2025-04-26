@@ -19,6 +19,15 @@ struct Atom;
 typedef std::shared_ptr<Atom> AtomPtr;
 typedef double Real;
 typedef AtomPtr (*Functor) (AtomPtr, AtomPtr);
+inline thread_local std::vector<AtomPtr> eval_stack; // call stack
+struct StackGuard {
+    StackGuard(AtomPtr node) {
+        eval_stack.push_back(node);
+    }
+    ~StackGuard() {
+        eval_stack.pop_back();
+    }
+};
 #define make_atom(a)(std::make_shared<Atom> (a))
 enum AtomType {LIST, SYMBOL, STRING, NUMBER, LAMBDA, OP};
 const char* ATOM_NAMES[] = {"list", "symbol", "std::string", "number", "lambda", "op"};
@@ -111,8 +120,15 @@ void error (const std::string& msg, AtomPtr n) {
 		err << " -> ";
 		print (n, err);
 	}
+    if (eval_stack.size () > 1) {
+        err << "\nstack trace:" << std::endl;
+        for (auto it = eval_stack.rbegin(); it != eval_stack.rend(); ++it) {
+            print(*it, err) << std::endl;
+        }
+    }	
 	throw std::runtime_error (err.str ());
 }
+
 AtomPtr args_check (AtomPtr node, unsigned args) {
 	std::stringstream err;
 	err << "insufficient number of arguments (required " << args << ", got " << node->tail.size () << ")";
@@ -272,107 +288,109 @@ AtomPtr fn_begin (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr fn_apply (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr fn_eval (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr eval (AtomPtr node, AtomPtr env) {
-tail_call:
-	if (is_nil (node)) return make_atom ();
-	if (node->type == SYMBOL && node->lexeme.size ()) return assoc (node, env);
-	if (node->type != LIST) return node;
+	StackGuard guard(node); 
 
-	AtomPtr func = eval (node->tail.at (0), env);
-	if (func->op == &fn_quote) {
-		args_check (node, 2);
-		return node->tail.at (1);
-	}
-	if (func->op == &fn_def) {
-		args_check (node, 3);
-		return extend (type_check (node->tail.at (1), SYMBOL), eval (node->tail.at (2), env), env);
-	}
-	if (func->op == &fn_set) {
-		args_check (node, 3);
-		return extend (type_check (node->tail.at (1), SYMBOL), eval (node->tail.at (2), env), env, true);
-	}
-	if (func->op == &fn_lambda) {
-		args_check (node, 3);
-		AtomPtr ll = make_atom();
-		ll->tail.push_back (type_check (node->tail.at (1), LIST)); // vars
-		ll->tail.push_back (type_check (node->tail.at (2), LIST)); // body
-		ll->tail.push_back (env); // env (lexical scope)
-		return make_atom(ll); // lambda
-	}
-	if (func->op == &fn_if) {
-		args_check (node, 3);
-		if (type_check (eval (node->tail.at (1), env), NUMBER)->value) {
-			node = node->tail.at (2);
-			goto tail_call;
-		} else {
-			if (node->tail.size () == 4) {
-				node = node->tail.at (3);
-				goto tail_call;
-			} else return make_atom ();
-		}
-	}
-	if (func->op == &fn_while) {
-		args_check (node, 3);
-		AtomPtr r = make_atom ();
-		while (type_check (eval (node->tail.at (1), env), NUMBER)->value) {
-			r = eval (node->tail.at (2), env);
-		}
-		return r;
-	}	
-	if (func->op == &fn_begin) {
-		args_check (node, 2);
-		for (unsigned i = 0; i < node->tail.size () - 1; ++i) {
-			eval (node->tail.at (i), env);
-		} 
-		node = node->tail.at (node->tail.size () - 1);
-		goto tail_call;
-	}
-	AtomPtr args = make_atom();
-	for (unsigned i = 1; i < node->tail.size (); ++i) {
-		args->tail.push_back (eval (node->tail.at (i), env));
-	}
-	if (func->type == LAMBDA) {
-		AtomPtr vars = func->tail.at (0);
-		AtomPtr body = func->tail.at (1);
-		AtomPtr nenv = make_atom ();
-		nenv->tail.push_back (env); //func->tail.at (2)); // new environment with static binding
+	while (true) {
+		if (is_nil (node)) return make_atom ();
+		if (node->type == SYMBOL && node->lexeme.size ()) return assoc (node, env);
+		if (node->type != LIST) return node;
 
-		if (vars->tail.size () < args->tail.size ()) error ("too many arguments in lambda", node);
-		unsigned minargs = (vars->tail.size () > args->tail.size () ? args->tail.size () : vars->tail.size ());
-		for (unsigned i = 0; i < minargs; ++i) {
-			extend (vars->tail.at (i), args->tail.at (i), nenv);
+		AtomPtr func = eval (node->tail.at (0), env);
+		if (func->op == &fn_quote) {
+			args_check (node, 2);
+			return node->tail.at (1);
 		}
-
-		if (vars->tail.size () > args->tail.size ()) {		
-			AtomPtr vars_cut = make_atom ();
-			for (unsigned i = 0; i < minargs; ++i) {
-				vars_cut->tail.push_back (vars->tail.at (i));
-			}	
-			AtomPtr new_lambda = make_atom (); 
-			new_lambda->tail.push_back (vars_cut);
-			new_lambda->tail.push_back (body);
-			new_lambda->tail.push_back (nenv);
-			return make_atom (new_lambda); // return lambda with bounded vars
+		if (func->op == &fn_def) {
+			args_check (node, 3);
+			return extend (type_check (node->tail.at (1), SYMBOL), eval (node->tail.at (2), env), env);
 		}
-		env = nenv;
-		node = body;
-		goto tail_call;
-	}
-	if (func->type == OP) {
-		args_check (args, func->minargs);
-		if (func->op == &fn_eval) {
-			node = args->tail.at (0);
-			goto tail_call;
+		if (func->op == &fn_set) {
+			args_check (node, 3);
+			return extend (type_check (node->tail.at (1), SYMBOL), eval (node->tail.at (2), env), env, true);
+		}
+		if (func->op == &fn_lambda) {
+			args_check (node, 3);
+			AtomPtr ll = make_atom();
+			ll->tail.push_back (type_check (node->tail.at (1), LIST)); // vars
+			ll->tail.push_back (type_check (node->tail.at (2), LIST)); // body
+			ll->tail.push_back (env); // env (lexical scope)
+			return make_atom(ll); // lambda
+		}
+		if (func->op == &fn_if) {
+			args_check (node, 3);
+			if (type_check (eval (node->tail.at (1), env), NUMBER)->value) {
+				node = node->tail.at (2);
+				continue; 
+			} else {
+				if (node->tail.size () == 4) {
+					node = node->tail.at (3);
+					continue; 
+				} else return make_atom ();
+			}
+		}
+		if (func->op == &fn_while) {
+			args_check (node, 3);
+			AtomPtr r = make_atom ();
+			while (type_check (eval (node->tail.at (1), env), NUMBER)->value) {
+				r = eval (node->tail.at (2), env);
+			}
+			return r;
 		}	
-		if (func->op == &fn_apply) {
-			AtomPtr l = type_check (args->tail.at (1), LIST);
-			l->tail.push_front (args->tail.at (0));
-			node = l;
-			goto tail_call;
-		}			
-		return func->op (args, env);
-	}	
-	error ("function expected", node);
-	return node; // dummy
+		if (func->op == &fn_begin) {
+			args_check (node, 2);
+			for (unsigned i = 0; i < node->tail.size () - 1; ++i) {
+				eval (node->tail.at (i), env);
+			} 
+			node = node->tail.at (node->tail.size () - 1);
+			continue; 
+		}
+		AtomPtr args = make_atom();
+		for (unsigned i = 1; i < node->tail.size (); ++i) {
+			args->tail.push_back (eval (node->tail.at (i), env));
+		}
+		if (func->type == LAMBDA) {
+			AtomPtr vars = func->tail.at (0);
+			AtomPtr body = func->tail.at (1);
+			AtomPtr nenv = make_atom ();
+			nenv->tail.push_back (func->tail.at (2)); // new environment with static binding
+
+			if (vars->tail.size () < args->tail.size ()) error ("too many arguments in lambda", node);
+			unsigned minargs = (vars->tail.size () > args->tail.size () ? args->tail.size () : vars->tail.size ());
+			for (unsigned i = 0; i < minargs; ++i) {
+				extend (vars->tail.at (i), args->tail.at (i), nenv);
+			}
+
+			if (vars->tail.size () > args->tail.size ()) {		
+				AtomPtr vars_cut = make_atom ();
+				for (unsigned i = 0; i < minargs; ++i) {
+					vars_cut->tail.push_back (vars->tail.at (i));
+				}	
+				AtomPtr new_lambda = make_atom (); 
+				new_lambda->tail.push_back (vars_cut);
+				new_lambda->tail.push_back (body);
+				new_lambda->tail.push_back (nenv);
+				return make_atom (new_lambda); // return lambda with bounded vars
+			}
+			env = nenv;
+			node = body;
+			continue; 
+		}
+		if (func->type == OP) {
+			args_check (args, func->minargs);
+			if (func->op == &fn_eval) {
+				node = args->tail.at (0);
+				continue; 
+			}	
+			if (func->op == &fn_apply) {
+				AtomPtr l = type_check (args->tail.at (1), LIST);
+				l->tail.push_front (args->tail.at (0));
+				node = l;
+				continue; 
+			}			
+			return func->op (args, env);
+		}	
+		error ("function expected", node);
+	}
 }
 
 // functors
