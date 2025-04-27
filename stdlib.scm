@@ -9,6 +9,26 @@
       (cons 'lambda (cons (map car bindings) (list body)))
       (map (lambda (binding) (car (cdr binding))) bindings))))
 
+(define test
+  (macro (expr expected)
+    (begin
+      (define result (eval expr))
+      (if (eq? result expected)
+          (begin
+            (display "PASS: ")
+            (display expr)
+            (display "\n"))
+          (begin
+            (display "FAIL: ")
+            (display expr)
+            (display "\n")
+            (display "    got: ")
+            (display result)
+            (display "\n")
+            (display "    expected: ")
+            (display expected)
+            (display "\n"))))))
+
 ;; --- higher-order functions ---
 
 (define map

@@ -30,7 +30,7 @@ struct StackGuard {
 };
 #define make_atom(a)(std::make_shared<Atom> (a))
 enum AtomType {LIST, SYMBOL, STRING, NUMBER, LAMBDA, MACRO, OP};
-const char* ATOM_NAMES[] = {"list", "symbol", "std::string", "number", "lambda", "macro", "op"};
+const char* ATOM_NAMES[] = {"list", "symbol", "string", "number", "lambda", "macro", "op"};
 bool is_string (const std::string& l);
 void error (const std::string& msg, AtomPtr n);
 struct Atom {
