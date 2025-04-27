@@ -6,20 +6,19 @@
 
 (define pi 3.141592653589793)
 (define sr 44100) ;; Sample rate
-(define dur 0.01) ;; Short duration: 0.01s (441 samples)
+(define dur 1) 
 (define n (floor (* sr dur)))
 
 (print "Generating " n " samples\n")
 
 ;; Generate a sine wave (channel 1)
-(define sine
-  (map (lambda (i) (sin (* 2 pi 440 (/ i sr)))) ;; 440Hz
-       (take n (iterate (lambda (x) (+ x 1)) 0))))
+(define points (iterate (lambda (x) (+ x 0.01)) 0 n))
 
-;; Generate a cosine wave (channel 2)
-(define cosine
-  (map (lambda (i) (cos (* 2 pi 440 (/ i sr))))
-       (take n (iterate (lambda (x) (+ x 1)) 0))))
+;; Sine wave
+(define sine (map (lambda (x) (sin (* 2 3.1415 x))) points))
+
+;; Cosine wave
+(define cosine (map (lambda (x) (cos (* 2 3.1415 x))) points))
 
 ;; Pack into multichannel structure
 (define stereo (list sine cosine))

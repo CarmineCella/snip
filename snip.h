@@ -31,8 +31,8 @@ struct StackGuard {
     }
 };
 #define make_atom(a)(std::make_shared<Atom> (a))
-enum AtomType {LIST, SYMBOL, STRING, NUMBER, LAMBDA, OP};
-const char* ATOM_NAMES[] = {"list", "symbol", "std::string", "number", "lambda", "op"};
+enum AtomType {LIST, SYMBOL, STRING, NUMBER, LAMBDA, MACRO, OP};
+const char* ATOM_NAMES[] = {"list", "symbol", "std::string", "number", "lambda", "macro", "op"};
 bool is_string (const std::string& l);
 void error (const std::string& msg, AtomPtr n);
 struct Atom {
@@ -52,7 +52,6 @@ struct Atom {
 		value = val;
 	}
 	Atom (AtomPtr ll) {
-		if (ll->tail.size () < 3) error ("malformed lambda function", make_atom());
 		type = LAMBDA;
 		tail.push_back (ll->tail.at (0)); // vars
 		tail.push_back (ll->tail.at (1)); // body
@@ -102,8 +101,9 @@ std::ostream& print (AtomPtr e, std::ostream& out, bool write = false) {
 		case NUMBER:
 			out << e->value;
 		break;
-		case LAMBDA:
-			out << "(lambda ";
+		case LAMBDA: case MACRO:
+			if (e->type == LAMBDA) out << "(lambda ";
+			else out << "(macro ";
 			print (e->tail.at (0), out, write) << " "; // vars
 			print (e->tail.at (1), out, write) << ")"; // body
  		break;
@@ -239,7 +239,7 @@ bool atom_eq (AtomPtr a, AtomPtr b) {
 		case NUMBER:
 		return a->value == b->value;
 		break;
-		case LAMBDA:
+		case LAMBDA: case MACRO:
 			if (a->tail.at (0) != b->tail.at (0)) return false;
 			if (a->tail.at (1) != b->tail.at (1)) return false;
 			return true; // env not checked in comparison
@@ -284,6 +284,7 @@ AtomPtr fn_quote (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr fn_def (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr fn_set (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr fn_lambda (AtomPtr, AtomPtr) { return nullptr; } // dummy
+AtomPtr fn_macro (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr fn_if (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr fn_while (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr fn_begin (AtomPtr, AtomPtr) { return nullptr; } // dummy
@@ -309,13 +310,19 @@ AtomPtr eval (AtomPtr node, AtomPtr env) {
 			args_check (node, 3);
 			return extend (type_check (node->tail.at (1), SYMBOL), eval (node->tail.at (2), env), env, true);
 		}
-		if (func->op == &fn_lambda) {
+		if (func->op == &fn_lambda || func->op == &fn_macro) {
 			args_check (node, 3);
 			AtomPtr ll = make_atom();
 			ll->tail.push_back (type_check (node->tail.at (1), LIST)); // vars
-			ll->tail.push_back (type_check (node->tail.at (2), LIST)); // body
+			AtomPtr body = make_atom ();
+			for (unsigned i = 2; i < node->tail.size (); ++i) {
+				body->tail.push_back (node->tail.at (i));
+			}
+			ll->tail.push_back (body); // body
 			ll->tail.push_back (env); // env (lexical scope)
-			return make_atom(ll); // lambda
+			AtomPtr f = make_atom(ll); // lambda
+			if (func->op == &fn_macro) f->type = MACRO;
+			return f;
 		}
 		if (func->op == &fn_if) {
 			args_check (node, 3);
@@ -347,15 +354,15 @@ AtomPtr eval (AtomPtr node, AtomPtr env) {
 		}
 		AtomPtr args = make_atom();
 		for (unsigned i = 1; i < node->tail.size (); ++i) {
-			args->tail.push_back (eval (node->tail.at (i), env));
+			args->tail.push_back ((func->type == MACRO ? node->tail.at (i) : eval (node->tail.at (i), env)));
 		}
-		if (func->type == LAMBDA) {
+		if (func->type == LAMBDA || func->type == MACRO) {
 			AtomPtr vars = func->tail.at (0);
 			AtomPtr body = func->tail.at (1);
 			AtomPtr nenv = make_atom ();
 			nenv->tail.push_back (func->tail.at (2)); // new environment with static binding
 
-			if (vars->tail.size () < args->tail.size ()) error ("too many arguments in lambda", node);
+			// if (vars->tail.size () < args->tail.size ()) error ("too many arguments in lambda/macro", node);
 			unsigned minargs = (vars->tail.size () > args->tail.size () ? args->tail.size () : vars->tail.size ());
 			for (unsigned i = 0; i < minargs; ++i) {
 				extend (vars->tail.at (i), args->tail.at (i), nenv);
@@ -370,10 +377,16 @@ AtomPtr eval (AtomPtr node, AtomPtr env) {
 				new_lambda->tail.push_back (vars_cut);
 				new_lambda->tail.push_back (body);
 				new_lambda->tail.push_back (nenv);
-				return make_atom (new_lambda); // return lambda with bounded vars
+				AtomPtr f = make_atom (new_lambda); // return lambda/macro with bounded vars
+				if (func->type == MACRO) f->type = MACRO;
+				return f;
 			}
 			env = nenv;
-			node = body;
+			for (unsigned i = 0; i < body->tail.size () - 1; ++i) {
+				eval ((func->type == MACRO ? eval (body->tail.at (i), nenv) : body->tail.at (i)), nenv);
+			}
+			node = (func->type == MACRO ? eval (body->tail.at (body->tail.size () - 1), nenv) 
+				: body->tail.at (body->tail.size () - 1));		
 			continue; 
 		}
 		if (func->type == OP) {
@@ -957,6 +970,52 @@ AtomPtr fn_readwav(AtomPtr node, AtomPtr env) {
     }
     return result;
 }
+AtomPtr fn_readcsv(AtomPtr node, AtomPtr env) {
+    std::string filename = type_check(node->tail.at(0), STRING)->lexeme;
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        error("readcsv: cannot open file", node);
+    }
+    AtomPtr result = make_atom();
+    std::string line;
+    while (std::getline(file, line)) {
+        AtomPtr row = make_atom();
+        std::stringstream ss(line);
+        std::string item;
+        while (std::getline(ss, item, ',')) {
+            if (is_number(item)) {
+                row->tail.push_back(make_atom(std::stod(item)));
+            } else {
+                row->tail.push_back(make_atom('"' + item));
+            }
+        }
+        result->tail.push_back(row);
+    }
+    return result;
+}
+AtomPtr fn_writecsv(AtomPtr node, AtomPtr env) {
+    std::string filename = type_check(node->tail.at(0), STRING)->lexeme;
+    AtomPtr table = type_check(node->tail.at(1), LIST);
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        error("writecsv: cannot open file", node);
+    }
+    for (const auto& row : table->tail) {
+        AtomPtr r = type_check(row, LIST);
+        for (size_t i = 0; i < r->tail.size(); ++i) {
+            if (r->tail[i]->type == NUMBER) {
+                file << r->tail[i]->value;
+            } else if (r->tail[i]->type == STRING) {
+                file << r->tail[i]->lexeme;
+            } else if (r->tail[i]->type == SYMBOL) {
+                file << r->tail[i]->lexeme;
+            }
+            if (i != r->tail.size() - 1) file << ",";
+        }
+        file << "\n";
+    }
+    return make_atom("");
+}
 void replace (std::string &s, std::string from, std::string to) {
 	int idx = 0;
 	size_t next;
@@ -1044,6 +1103,7 @@ AtomPtr make_env () {
 	add_op ("define", &fn_def, -1, env);
 	add_op ("set!", &fn_set, -1, env);
 	add_op ("lambda", &fn_lambda, -1, env);
+	add_op ("macro", &fn_macro, -1, env);
 	add_op ("if", &fn_if, -1, env);
 	add_op ("while", &fn_while, -1, env);
 	add_op ("begin", &fn_begin, -1, env);
@@ -1091,6 +1151,10 @@ AtomPtr make_env () {
 	add_op ("dot", &fn_dot, 2, env);
 	add_op ("pol2car", &fn_pol2car, 1, env);
 	add_op ("car2pol", &fn_car2pol, 1, env);	
+	add_op ("readwav", &fn_readwav, 1, env);
+	add_op ("writewav", &fn_writewav, 3, env);
+	add_op ("readcsv", &fn_readcsv, 1, env);
+	add_op ("writecsv", &fn_writecsv, 2, env);
 	add_op ("string", &fn_string, 2, env);
 	add_op ("exec", &fn_exec, 1, env);
 	add_op ("exit", &fn_exit, 0, env);
