@@ -2,12 +2,14 @@
 //
 #include <iostream>
 #include "snip.h"
+#include "scilib.h"
 
 using namespace std;
 
 int main (int argc, char* argv[]) {
 	AtomPtr env = make_env ();
-
+	add_scilib (env);
+	
 	if (argc == 1) {
 		cout << "[snip, v. 0.1]" << endl << endl;
 		cout << "scheme nano-interpreter project" << endl;
