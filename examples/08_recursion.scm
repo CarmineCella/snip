@@ -1,4 +1,5 @@
-; Recursive factorial
+;; Recursive factorial
+
 (define factorial
     (lambda (n)
         (if (<= n 1)
@@ -8,9 +9,10 @@
     )
 )
 
-(print (factorial 6) "\n") ; Should be 720
+(display (factorial 6) "\n") ; Should be 720
 
-; Recursive Fibonacci
+;; Recursive Fibonacci
+
 (define fib
     (lambda (n)
         (if (< n 2)
@@ -20,5 +22,7 @@
     )
 )
 
-(print (fib 8) "\n") ; Should be 21
+(display (fib 8) "\n") ; Should be 21
+
+;; eof
 

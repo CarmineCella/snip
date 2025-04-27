@@ -634,7 +634,7 @@ AtomPtr make_env () {
 	add_op ("cdr", &fn_cdr, 1, env);
 	add_op ("eq?", &fn_eq, 2, env);
 	add_op ("type", &fn_type, 1, env);
-	add_op ("print", &fn_print<false>, 1, env);
+	add_op ("display", &fn_print<false>, 1, env);
 	add_op ("save", &fn_print<true>, 2, env);
 	add_op ("read", &fn_read, 0, env);
 	add_op ("load", &fn_load, 0, env);

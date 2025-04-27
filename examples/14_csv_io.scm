@@ -9,4 +9,4 @@
 ;; Now read it back
 (define loaded (readcsv "test.csv"))
 
-(print loaded "\n")
+(display loaded "\n")
