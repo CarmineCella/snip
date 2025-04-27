@@ -6,7 +6,7 @@
 
 #include <iostream>
 #include <fstream>
-#include <deque>
+#include <vector>
 #include <memory>
 #include <stdexcept>
 #include <sstream>
@@ -64,7 +64,7 @@ struct Atom {
 	Real value;
 	Functor op;
 	unsigned minargs;
-	std::deque <AtomPtr> tail;
+	std::vector <AtomPtr> tail;
 };
 bool is_nil (AtomPtr e) {
 	return (e == nullptr || (e->type == LIST && e->tail.size () == 0));
@@ -395,7 +395,8 @@ AtomPtr eval (AtomPtr node, AtomPtr env) {
 			}	
 			if (func->op == &fn_apply) {
 				AtomPtr l = type_check (args->tail.at (1), LIST);
-				l->tail.push_front (args->tail.at (0));
+				l->tail.insert (l->tail.begin(), args->tail.at(0));
+
 				node = l;
 				continue; 
 			}			
