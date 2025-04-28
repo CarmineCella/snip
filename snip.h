@@ -75,8 +75,15 @@ bool is_string (const std::string& l) {
 	if (l.size () > 1 && l.at (0) == '\"') return true;
 	return false;
 }
-bool is_number (std::string token) {
-	return std::regex_match(token, std::regex (("((\\+|-)?[[:digit:]]+)(\\.(([[:digit:]]+)?))?")));
+// bool is_number (std::string token) {
+// 	return std::regex_match(token, std::regex (("((\\+|-)?[[:digit:]]+)(\\.(([[:digit:]]+)?))?")));
+// }
+bool is_number (const std::string& tt) {
+	const char* t = tt.c_str ();
+	std::stringstream dummy;
+	dummy << t;
+	Real v; dummy >> v;
+	return dummy && dummy.eof ();
 }
 std::ostream& print (AtomPtr e, std::ostream& out, bool write = false) {
 	if (e != nullptr) { // to have () printed for nil
@@ -97,7 +104,7 @@ std::ostream& print (AtomPtr e, std::ostream& out, bool write = false) {
 			else out << e->lexeme;
 		break;
 		case NUMBER:
-			out << e->value;
+			out << std::setprecision (15) << e->value;
 		break;
 		case LAMBDA: case MACRO:
 			if (e->type == LAMBDA) out << "(lambda ";
@@ -151,7 +158,7 @@ std::string next (std::istream &in, unsigned& linenum) {
 			do { c = in.get (); } while (c != '\n' && !in.eof ());
 			++linenum;
 			break;
-			case '(': case ')': case '\'':
+			case '(': case ')': case '\'': case '{': case '}':
 				if (accum.str ().size ()) {
 					in.putback (c);
 					return accum.str ();
@@ -206,6 +213,17 @@ AtomPtr read (std::istream& in, unsigned& linenum) {
 			else l->tail.push_back (n);
 		}
 		return l;
+	} else if (token == "{") {
+		AtomPtr l = make_atom ();
+		while (!in.eof ()) {
+			AtomPtr n = read (in, linenum);
+			if (n->lexeme == "}") break;
+			else l->tail.push_back (n);
+		}
+		AtomPtr ll = make_atom();
+		ll->tail.push_back (make_atom ("quote"));
+		ll->tail.push_back (l);		
+		return ll;
 	} else if (token == "\'") {
 		AtomPtr ll = make_atom();
 		ll->tail.push_back (make_atom ("quote"));
@@ -234,9 +252,11 @@ bool atom_eq (AtomPtr a, AtomPtr b) {
 		case SYMBOL: case STRING:
 			return a->lexeme == b->lexeme;
 		break;
-		case NUMBER:
-		return a->value == b->value;
-		break;
+		case NUMBER: { 
+            const Real epsilon = 1e-9;
+            // check if the absolute difference is less than epsilon
+            return std::abs(a->value - b->value) < epsilon;
+        } break;
 		case LAMBDA: case MACRO:
 			if (a->tail.at (0) != b->tail.at (0)) return false;
 			if (a->tail.at (1) != b->tail.at (1)) return false;

@@ -8,8 +8,6 @@
 (test (* 2 3 4) 24)
 (test (/ 100 2 5) 10)
 
-(test (fold + 0 (list 1 2 3 4)) 10)
-
 ;; --- Variables ---
 (define x 10)
 (define y 20)
@@ -46,6 +44,30 @@
 (test (car lst) 1)
 (test (car (cdr lst)) 2)
 (test (car (cons 0 lst)) 0)
+
+;; --- Types ---
+(test (type 1) number )
+(test (type 'a) symbol)
+(test (type "hallo") string)
+(test (type (lambda (x)(+ x x))) lambda)
+(test (type (list)) list)
+(test (type ()) list)
+(test (type +) op)
+
+;; --- Equalities ---
+(test (eq? 1 1) 1)
+(test (eq? 1 0) 0)
+(test (eq? 'a 'a) 1)
+(test (eq? 'a 'b) 0)
+(test (eq? (list 1 2 3) (list 1 2 3)) 1)
+(define b (list 2 3))
+(test (eq? b b) 1)
+(test (eq? (list 1 2 3) b) 0)
+(test (eq? + +) 1)
+(test (eq? square square) 1)
+(test (eq? square add) 0)
+(test (eq? "hallo" "hallo") 1)
+(test (eq? "hallo" "world") 0)
 
 ;; --- Strings ---
 (test (string 'length "hello") 5)

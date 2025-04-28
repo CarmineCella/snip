@@ -29,7 +29,7 @@ AtomPtr fn_variance(AtomPtr node, AtomPtr env) {
         Real diff = type_check(e, NUMBER)->value - m;
         var += diff * diff;
     }
-    return make_atom(var / (list->tail.size() - 1));
+    return make_atom(var / (list->tail.size()));
 }
 AtomPtr fn_stddev(AtomPtr node, AtomPtr env) {
     AtomPtr var = fn_variance(node, env);
@@ -55,9 +55,9 @@ AtomPtr fn_linear_regression(AtomPtr node, AtomPtr env) {
     bool is_1d = x_list->tail.size() > 0 && x_list->tail.at(0)->type == NUMBER;
     size_t dim = is_1d ? 1 : type_check(x_list->tail.at(0), LIST)->tail.size();
     size_t dim_b = dim + 1; // bias term
-    // Build XtX matrix (dim_b × dim_b)
+    // build XtX matrix (dim_b × dim_b)
     std::vector<std::vector<Real>> XtX(dim_b, std::vector<Real>(dim_b, 0.0));
-    // Build XtY vector (dim_b)
+    // build XtY vector (dim_b)
     std::vector<Real> XtY(dim_b, 0.0);
     for (size_t i = 0; i < n; ++i) {
         std::vector<Real> xi(dim_b, 1.0); // bias
@@ -77,10 +77,10 @@ AtomPtr fn_linear_regression(AtomPtr node, AtomPtr env) {
             XtY[j] += xi[j] * yi;
         }
     }
-    // Solve (XtX) w = XtY
-    // Naive inversion (for very small matrices)
+    // solve (XtX) w = XtY
+    // naive inversion (for very small matrices)
     std::vector<std::vector<Real>> inv(dim_b, std::vector<Real>(dim_b, 0.0));
-    // First, compute determinant (only for dim_b <= 3 we'll support)
+    // compute determinant (only for dim_b <= 3 we'll support)
     if (dim_b == 2) {
         Real det = XtX[0][0]*XtX[1][1] - XtX[0][1]*XtX[1][0];
         if (std::abs(det) < 1e-8) error("singular matrix in regression", node);
