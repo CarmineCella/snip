@@ -9,11 +9,11 @@
 
 ;; --- variance ---
 (display "\n--- Variance of a list ---\n")
-(display (variance (list 1 2 3 4 5)) "\n") ; 2.5
+(display (variance (list 1 2 3 4 5)) "\n") ; 2
 
 ;; --- stddev ---
 (display "\n--- Standard Deviation of a list ---\n")
-(display (stddev (list 1 2 3 4 5)) "\n") ; ~1.58
+(display (stddev (list 1 2 3 4 5)) "\n") ; ~1.4142
 
 ;; --- distance ---
 (display "\n--- Euclidean distance between two vectors ---\n")

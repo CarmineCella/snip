@@ -60,7 +60,7 @@ AtomPtr fn_linear_regression(AtomPtr node, AtomPtr env) {
     // build XtY vector (dim_b)
     std::vector<Real> XtY(dim_b, 0.0);
     for (size_t i = 0; i < n; ++i) {
-        std::vector<Real> xi(dim_b, 1.0); // bias
+        std::vector<Real> xi(dim_b, 1.0); // bias first
         if (is_1d) {
             xi[1] = type_check(x_list->tail.at(i), NUMBER)->value;
         } else {
@@ -78,9 +78,7 @@ AtomPtr fn_linear_regression(AtomPtr node, AtomPtr env) {
         }
     }
     // solve (XtX) w = XtY
-    // naive inversion (for very small matrices)
     std::vector<std::vector<Real>> inv(dim_b, std::vector<Real>(dim_b, 0.0));
-    // compute determinant (only for dim_b <= 3 we'll support)
     if (dim_b == 2) {
         Real det = XtX[0][0]*XtX[1][1] - XtX[0][1]*XtX[1][0];
         if (std::abs(det) < 1e-8) error("singular matrix in regression", node);
@@ -113,28 +111,32 @@ AtomPtr fn_linear_regression(AtomPtr node, AtomPtr env) {
             w[j] += inv[j][k] * XtY[k];
         }
     }
+    // --- corrected model output ---
     AtomPtr model = make_atom();
-    for (auto v : w) {
-        model->tail.push_back(make_atom(v));
+    for (size_t i = 1; i < w.size(); ++i) {
+        model->tail.push_back(make_atom(w[i])); // slopes first
     }
+    model->tail.push_back(make_atom(w[0])); // intercept last
     return model;
 }
 AtomPtr fn_predict_linear(AtomPtr node, AtomPtr env) {
     AtomPtr model = type_check(node->tail.at(0), LIST);
     AtomPtr x = node->tail.at(1);
-    Real y = type_check(model->tail.at(0), NUMBER)->value; // intercept
+    size_t n_features = model->tail.size() - 1; // last element is intercept
+    Real intercept = type_check(model->tail.at(n_features), NUMBER)->value; // intercept at last position
+    Real y = intercept;
     if (x->type == NUMBER) {
-        if (model->tail.size() != 2)
-            error("predict-linear: model dimension mismatch for scalar input", node);
-        y += type_check(model->tail.at(1), NUMBER)->value * type_check(x, NUMBER)->value;
+        if (n_features != 1)
+            error("model dimension mismatch for scalar input", node);
+        y += type_check(model->tail.at(0), NUMBER)->value * type_check(x, NUMBER)->value;
     } else if (x->type == LIST) {
-        if (model->tail.size() != x->tail.size() + 1)
-            error("predict-linear: model dimension mismatch for list input", node);
-        for (size_t i = 0; i < x->tail.size(); ++i) {
-            y += type_check(model->tail.at(i + 1), NUMBER)->value * type_check(x->tail.at(i), NUMBER)->value;
+        if (x->tail.size() != n_features)
+            error("model dimension mismatch for list input", node);
+        for (size_t i = 0; i < n_features; ++i) {
+            y += type_check(model->tail.at(i), NUMBER)->value * type_check(x->tail.at(i), NUMBER)->value;
         }
     } else {
-        error("predict-linear: input must be number or list", node);
+        error("input must be number or list", node);
     }
     return make_atom(y);
 }
@@ -250,7 +252,7 @@ AtomPtr fn_fft(AtomPtr node, AtomPtr env) {
         data.push_back(type_check(elem, NUMBER)->value);
     }
     if (!is_power_of_two(data.size())) {
-        error("fft: input size must be a power of two", node);
+        error("input size must be a power of two", node);
     }
     fft_compute(data, false);
     AtomPtr out = make_atom();
@@ -272,7 +274,7 @@ AtomPtr fn_ifft(AtomPtr node, AtomPtr env) {
         data.push_back(Complex(re, im));
     }
     if (!is_power_of_two(data.size())) {
-        error("fft: input size must be a power of two", node);
+        error("input size must be a power of two", node);
     }	
     fft_compute(data, true);
     AtomPtr out = make_atom();
@@ -336,7 +338,7 @@ AtomPtr fn_dot(AtomPtr node, AtomPtr env) {
     const auto& btail = b->tail;
     size_t n = atail.size();
     if (n != btail.size()) {
-        error("dot: mismatched vector lengths", node);
+        error("mismatched vector lengths", node);
     }
     Real sum0 = 0, sum1 = 0, sum2 = 0, sum3 = 0;
     size_t i = 0;
@@ -449,7 +451,7 @@ AtomPtr fn_readcsv(AtomPtr node, AtomPtr env) {
     std::string filename = type_check(node->tail.at(0), STRING)->lexeme;
     std::ifstream file(filename);
     if (!file.is_open()) {
-        error("readcsv: cannot open file", node);
+        error("cannot open file", node);
     }
     AtomPtr result = make_atom();
     std::string line;
@@ -473,7 +475,7 @@ AtomPtr fn_writecsv(AtomPtr node, AtomPtr env) {
     AtomPtr table = type_check(node->tail.at(1), LIST);
     std::ofstream file(filename);
     if (!file.is_open()) {
-        error("writecsv: cannot open file", node);
+        error("cannot open file", node);
     }
     for (const auto& row : table->tail) {
         AtomPtr r = type_check(row, LIST);
