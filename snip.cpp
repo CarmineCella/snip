@@ -18,7 +18,7 @@ using namespace std;
 
 int main (int argc, char* argv[]) {
 	AtomPtr env = make_env ();
-	add_scilib (env);
+	add_scientific (env);
 
 	if (argc == 1) {
 		cout << "[snip, v. 0.1]" << endl << endl;

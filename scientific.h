@@ -9,6 +9,7 @@
 #include <map>
 #include <fstream>
 #include <algorithm>
+#include <random>
 #include "snip.h"
 
 AtomPtr fn_mean(AtomPtr node, AtomPtr env) {
@@ -218,6 +219,170 @@ AtomPtr fn_knn(AtomPtr node, AtomPtr env) {
         }
     }
     return make_atom(best_label);
+}
+AtomPtr random_matrix(int rows, int cols) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<Real> dis(-1.0, 1.0);
+    AtomPtr mat = make_atom();
+    for (int i = 0; i < rows; ++i) {
+        AtomPtr row = make_atom();
+        for (int j = 0; j < cols; ++j) {
+            row->tail.push_back(make_atom(dis(gen)));
+        }
+        mat->tail.push_back(row);
+    }
+    return mat;
+}
+AtomPtr zero_vector(int size) {
+    AtomPtr vec = make_atom();
+    for (int i = 0; i < size; ++i) {
+        vec->tail.push_back(make_atom(0.0));
+    }
+    return vec;
+}
+AtomPtr fn_nn_init(AtomPtr node, AtomPtr env) {
+    AtomPtr sizes = type_check(node->tail.at(0), LIST);
+    AtomPtr activations = type_check(node->tail.at(1), LIST);
+    if (sizes->tail.size() != activations->tail.size() + 1) {
+        error("nn-init: activations must be one less than sizes", node);
+    }
+    
+    AtomPtr net = make_atom();
+    for (size_t i = 0; i < activations->tail.size(); ++i) {
+        int in_size = type_check(sizes->tail.at(i), NUMBER)->value;
+        int out_size = type_check(sizes->tail.at(i + 1), NUMBER)->value;
+        AtomPtr layer = make_atom();
+        layer->tail.push_back(random_matrix(out_size, in_size)); // weights
+        layer->tail.push_back(zero_vector(out_size)); // biases
+        layer->tail.push_back(type_check(activations->tail.at(i), STRING)); // activation
+        net->tail.push_back(layer);
+    }
+    return net;
+}
+Real relu(Real x) { return x > 0 ? x : 0; }
+Real relu_deriv(Real x) { return x > 0 ? 1 : 0; }
+Real sigmoid(Real x) { return 1.0 / (1.0 + std::exp(-x)); }
+Real sigmoid_deriv(Real x) { Real s = sigmoid(x); return s * (1 - s); }
+std::vector<Real> matvec_mul(AtomPtr mat, const std::vector<Real>& vec) {
+    std::vector<Real> result;
+    for (auto& row : mat->tail) {
+        Real sum = 0.0;
+        for (size_t j = 0; j < row->tail.size(); ++j) {
+            sum += type_check(row->tail.at(j), NUMBER)->value * vec.at(j);
+        }
+        result.push_back(sum);
+    }
+    return result;
+}
+void add_bias(std::vector<Real>& v, AtomPtr bias) {
+    for (size_t i = 0; i < v.size(); ++i) {
+        v[i] += type_check(bias->tail.at(i), NUMBER)->value;
+    }
+}
+AtomPtr fn_nn_predict(AtomPtr node, AtomPtr env) {
+    AtomPtr net = type_check(node->tail.at(0), LIST);
+    AtomPtr input = type_check(node->tail.at(1), LIST);
+    std::vector<Real> vec;
+    for (auto& e : input->tail) {
+        vec.push_back(type_check(e, NUMBER)->value);
+    }
+    for (auto& layer : net->tail) {
+        AtomPtr weights = layer->tail.at(0);
+        AtomPtr biases = layer->tail.at(1);
+        AtomPtr activation = type_check(layer->tail.at(2), STRING);
+        std::string act = activation->lexeme;
+        vec = matvec_mul(weights, vec);
+        add_bias(vec, biases);
+        if (act == "relu") {
+            for (auto& x : vec) x = relu(x);
+        } else if (act == "sigmoid") {
+            for (auto& x : vec) x = sigmoid(x);
+        } else {
+            error("unknown activation function in nn-predict", layer);
+        }
+    }
+    AtomPtr out = make_atom();
+    for (auto v : vec) {
+        out->tail.push_back(make_atom(v));
+    }
+    return out;
+}
+void apply_activation_deriv(std::vector<Real>& vec, const std::vector<Real>& pre_act, const std::string& act) {
+    for (size_t i = 0; i < vec.size(); ++i) {
+        if (act == "relu") {
+            vec[i] *= relu_deriv(pre_act[i]);
+        } else if (act == "sigmoid") {
+            vec[i] *= sigmoid_deriv(pre_act[i]);
+        }
+    }
+}
+AtomPtr fn_nn_train(AtomPtr node, AtomPtr env) {
+    AtomPtr net = type_check(node->tail.at(0), LIST);
+    AtomPtr input = type_check(node->tail.at(1), LIST);
+    AtomPtr target = type_check(node->tail.at(2), LIST);
+    Real lr = type_check(node->tail.at(3), NUMBER)->value;
+    // Convert input and target to std::vector<Real>
+    std::vector<Real> x;
+    for (auto& e : input->tail) x.push_back(type_check(e, NUMBER)->value);
+    std::vector<Real> y;
+    for (auto& e : target->tail) y.push_back(type_check(e, NUMBER)->value);
+    // Forward pass: store all activations and pre-activations
+    std::vector<std::vector<Real>> activations = {x};
+    std::vector<std::vector<Real>> pre_activations;
+    for (auto& layer : net->tail) {
+        AtomPtr weights = layer->tail.at(0);
+        AtomPtr biases = layer->tail.at(1);
+        std::string act = type_check(layer->tail.at(2), STRING)->lexeme;
+        std::vector<Real> z = matvec_mul(weights, activations.back());
+        add_bias(z, biases);
+        pre_activations.push_back(z);
+        std::vector<Real> a = z;
+        if (act == "relu") {
+            for (auto& v : a) v = relu(v);
+        } else if (act == "sigmoid") {
+            for (auto& v : a) v = sigmoid(v);
+        } else {
+            error("unknown activation", layer);
+        }
+        activations.push_back(a);
+    }
+    // Backward pass: compute gradients
+    std::vector<Real> delta(activations.back().size());
+    for (size_t i = 0; i < delta.size(); ++i) {
+        delta[i] = activations.back()[i] - y[i];
+    }
+    apply_activation_deriv(delta, pre_activations.back(), type_check(net->tail.back()->tail.at(2), STRING)->lexeme);
+    for (int l = net->tail.size() - 1; l >= 0; --l) {
+        AtomPtr layer = net->tail.at(l);
+        AtomPtr weights = layer->tail.at(0);
+        AtomPtr biases = layer->tail.at(1);
+        // Update weights
+        for (size_t i = 0; i < weights->tail.size(); ++i) {
+            for (size_t j = 0; j < weights->tail.at(i)->tail.size(); ++j) {
+                Real old_w = type_check(weights->tail.at(i)->tail.at(j), NUMBER)->value;
+                Real grad = delta[i] * activations[l][j];
+                weights->tail.at(i)->tail.at(j) = make_atom(old_w - lr * grad);
+            }
+        }
+        // Update biases
+        for (size_t i = 0; i < biases->tail.size(); ++i) {
+            Real old_b = type_check(biases->tail.at(i), NUMBER)->value;
+            biases->tail.at(i) = make_atom(old_b - lr * delta[i]);
+        }
+        if (l > 0) {
+            // Compute delta for previous layer
+            std::vector<Real> new_delta(activations[l].size(), 0.0);
+            for (size_t j = 0; j < activations[l].size(); ++j) {
+                for (size_t i = 0; i < weights->tail.size(); ++i) {
+                    new_delta[j] += type_check(weights->tail.at(i)->tail.at(j), NUMBER)->value * delta[i];
+                }
+            }
+            apply_activation_deriv(new_delta, pre_activations[l-1], type_check(net->tail.at(l-1)->tail.at(2), STRING)->lexeme);
+            delta = new_delta;
+        }
+    }
+    return make_atom(""); // no output needed
 }
 using Complex = std::complex<Real>;
 void fft_compute(std::vector<Complex>& a, bool invert) {
@@ -493,16 +658,18 @@ AtomPtr fn_writecsv(AtomPtr node, AtomPtr env) {
     }
     return make_atom("");
 }
-
-void add_scilib (AtomPtr env) {
+void add_scientific (AtomPtr env) {
     add_op ("mean", &fn_mean, 1, env);
 	add_op ("variance", &fn_variance, 1, env);
 	add_op ("stddev", &fn_stddev, 1, env);
 	add_op ("distance", &fn_distance, 2, env);
 	add_op ("kmeans", &fn_kmeans, 2, env);
 	add_op ("linreg", &fn_linear_regression, 2, env);
-	add_op ("predlin", &fn_predict_linear, 2, env);
+	add_op ("linreg-predict", &fn_predict_linear, 2, env);
 	add_op ("knn", &fn_knn, 4, env);	
+    add_op ("nn-init", &fn_nn_init, 2, env);
+    add_op ("nn-predict", &fn_nn_predict, 2, env);	
+    add_op ("nn-train", &fn_nn_train, 4, env);	
 	add_op ("fft", &fn_fft, 1, env);
 	add_op ("ifft", &fn_ifft, 1, env);
 	add_op ("conv", &fn_conv, 2, env);
@@ -517,4 +684,6 @@ void add_scilib (AtomPtr env) {
 #endif // SCILIB_h
 
 // eof
+
+
 

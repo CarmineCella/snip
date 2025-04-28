@@ -13,7 +13,7 @@
 
 (test (kmeans (list 1 1 2 2 9 9) 2) (9 1.5))
 (test (linreg (list 1 2 3) (list 2 4 6)) (2 0))
-(test (predlin (linreg (list 1 2 3) (list 2 4 6)) (list 4))  8)
+(test (linreg-predict (linreg (list 1 2 3) (list 2 4 6)) (list 4))  8)
 (test (knn (list (list 1 1) (list 5 5)) (list 0 1) (list 2 2) 2) 0)
 
 ; ;; --- Signal Processing ---

@@ -32,7 +32,7 @@
 (display model1 "\n") ;; should be close to (intercept 0, slope 2)
 
 ;; Predict new point
-(define y1_pred (predlin model1 5))
+(define y1_pred (linreg-predict model1 5))
 
 (display "Prediction for x = 5:\n")
 (display y1_pred "\n") ;; should be close to 10
@@ -56,7 +56,7 @@
 (display model2 "\n")
 
 ;; Predict new point
-(define y2_pred (predlin model2 (list 5 9)))
+(define y2_pred (linreg-predict model2 (list 5 9)))
 
 (display "Prediction for (5,9):\n")
 (display y2_pred "\n")
