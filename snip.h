@@ -12,6 +12,7 @@
 #include <sstream>
 #include <regex>
 #include <iomanip>
+#include <random>
 #include <cmath>
 
 // ast
@@ -554,7 +555,30 @@ MAKE_SINGOP (std::log10, fn_log10);
 MAKE_SINGOP (std::sqrt, fn_sqrt);
 MAKE_SINGOP (std::abs, fn_abs);
 MAKE_SINGOP (std::floor, fn_floor);
+#define MAKE_TWOOP(op,name) \
+AtomPtr name(AtomPtr node, AtomPtr env) { \
+    Real a = type_check(node->tail.at(0), NUMBER)->value; \
+    Real b = type_check(node->tail.at(1), NUMBER)->value; \
+    return make_atom(op(a, b)); \
+}
+MAKE_TWOOP (std::fmod, fn_mod);
+MAKE_TWOOP (std::pow, fn_pow);
+MAKE_TWOOP (std::atan2, fn_atan2);
 
+AtomPtr fn_random(AtomPtr node, AtomPtr env) {
+    int n = static_cast<int>(type_check(node->tail.at(0), NUMBER)->value);
+    if (n < 0) {
+        error("random: number of samples must be non-negative", node);
+    }
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    static std::uniform_real_distribution<Real> dis(0.0, 1.0);
+    AtomPtr result = make_atom();  // type = LIST
+    for (int i = 0; i < n; ++i) {
+        result->tail.push_back(make_atom(dis(gen)));
+    }
+    return result;
+}
 void replace (std::string &s, std::string from, std::string to) {
 	int idx = 0;
 	size_t next;
@@ -676,6 +700,10 @@ AtomPtr make_env () {
 	add_op ("sqrt", &fn_sqrt, 1, env);
 	add_op ("abs", &fn_abs, 1, env);
 	add_op ("floor", &fn_floor, 1, env);
+	add_op ("mod", &fn_mod, 2, env);
+	add_op ("pow", &fn_pow, 2, env);
+	add_op ("atan2", &fn_atan2, 2, env);
+	add_op ("random", &fn_random, 1, env);
 	add_op ("string", &fn_string, 2, env);
 	add_op ("exec", &fn_exec, 1, env);
 	add_op ("exit", &fn_exit, 0, env);

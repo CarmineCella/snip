@@ -69,6 +69,10 @@
 
 ;; --- list manipulation ---
 
+(define cadr
+  (lambda (lst)
+    (car (cdr lst))))
+
 (define filter
   (lambda (pred lst)
     (define filter-iter
@@ -226,6 +230,29 @@
         '()
         (cons (list (car lst1) (car lst2)) (zip (cdr lst1) (cdr lst2)))))
 )
+
+(define shuffle
+  (lambda (lst)
+    (define n (length lst))
+    (define vec lst) ; Assume list is a vector-like flat list
+    (define i (- n 1))
+    (while (> i 0)
+      (begin
+        (define j (mod (car (random 1)) (+ i 1)))
+        (define tmp (car (drop j vec)))
+        (set! vec
+              (append
+                (take j vec)
+                (cons (car (drop i vec))
+                      (append (drop (+ j 1) (take i vec)) (list tmp)))))
+        (set! i (- i 1))))
+    vec))
+
+(define unzip
+  (lambda (lst)
+    (define xs (map car lst))
+    (define ys (map cadr lst))
+    (list xs ys)))
 
 
 ; ;; --- logical operators ---

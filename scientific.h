@@ -247,19 +247,19 @@ AtomPtr fn_nn_init(AtomPtr node, AtomPtr env) {
     if (sizes->tail.size() != activations->tail.size() + 1) {
         error("nn-init: activations must be one less than sizes", node);
     }
-    
     AtomPtr net = make_atom();
     for (size_t i = 0; i < activations->tail.size(); ++i) {
         int in_size = type_check(sizes->tail.at(i), NUMBER)->value;
         int out_size = type_check(sizes->tail.at(i + 1), NUMBER)->value;
         AtomPtr layer = make_atom();
         layer->tail.push_back(random_matrix(out_size, in_size)); // weights
-        layer->tail.push_back(zero_vector(out_size)); // biases
+        layer->tail.push_back(zero_vector(out_size));            // biases
         layer->tail.push_back(type_check(activations->tail.at(i), STRING)); // activation
         net->tail.push_back(layer);
     }
     return net;
 }
+
 Real relu(Real x) { return x > 0 ? x : 0; }
 Real relu_deriv(Real x) { return x > 0 ? 1 : 0; }
 Real sigmoid(Real x) { return 1.0 / (1.0 + std::exp(-x)); }
@@ -280,34 +280,39 @@ void add_bias(std::vector<Real>& v, AtomPtr bias) {
         v[i] += type_check(bias->tail.at(i), NUMBER)->value;
     }
 }
+void softmax(std::vector<Real>& v) {
+    Real maxval = *std::max_element(v.begin(), v.end()); // for numerical stability
+    Real sum = 0;
+    for (auto& e : v) {
+        e = std::exp(e - maxval);
+        sum += e;
+    }
+    for (auto& e : v) {
+        e /= sum;
+    }
+}
 AtomPtr fn_nn_predict(AtomPtr node, AtomPtr env) {
     AtomPtr net = type_check(node->tail.at(0), LIST);
     AtomPtr input = type_check(node->tail.at(1), LIST);
     std::vector<Real> vec;
-    for (auto& e : input->tail) {
-        vec.push_back(type_check(e, NUMBER)->value);
-    }
-    for (auto& layer : net->tail) {
+    for (auto& e : input->tail) vec.push_back(type_check(e, NUMBER)->value);
+    for (size_t l = 0; l < net->tail.size(); ++l) {
+        AtomPtr layer = net->tail.at(l);
         AtomPtr weights = layer->tail.at(0);
         AtomPtr biases = layer->tail.at(1);
-        AtomPtr activation = type_check(layer->tail.at(2), STRING);
-        std::string act = activation->lexeme;
+        std::string act = type_check(layer->tail.at(2), STRING)->lexeme;
         vec = matvec_mul(weights, vec);
         add_bias(vec, biases);
-        if (act == "relu") {
-            for (auto& x : vec) x = relu(x);
-        } else if (act == "sigmoid") {
-            for (auto& x : vec) x = sigmoid(x);
-        } else {
-            error("unknown activation function in nn-predict", layer);
-        }
+        if (act == "relu") for (auto& x : vec) x = relu(x);
+        else if (act == "sigmoid") for (auto& x : vec) x = sigmoid(x);
+        else if (act == "softmax") softmax(vec);
+        else error("unknown activation", layer);
     }
     AtomPtr out = make_atom();
-    for (auto v : vec) {
-        out->tail.push_back(make_atom(v));
-    }
+    for (auto v : vec) out->tail.push_back(make_atom(v));
     return out;
 }
+
 void apply_activation_deriv(std::vector<Real>& vec, const std::vector<Real>& pre_act, const std::string& act) {
     for (size_t i = 0; i < vec.size(); ++i) {
         if (act == "relu") {
@@ -322,15 +327,17 @@ AtomPtr fn_nn_train(AtomPtr node, AtomPtr env) {
     AtomPtr input = type_check(node->tail.at(1), LIST);
     AtomPtr target = type_check(node->tail.at(2), LIST);
     Real lr = type_check(node->tail.at(3), NUMBER)->value;
-    // Convert input and target to std::vector<Real>
+
     std::vector<Real> x;
     for (auto& e : input->tail) x.push_back(type_check(e, NUMBER)->value);
     std::vector<Real> y;
     for (auto& e : target->tail) y.push_back(type_check(e, NUMBER)->value);
-    // Forward pass: store all activations and pre-activations
+
     std::vector<std::vector<Real>> activations = {x};
     std::vector<std::vector<Real>> pre_activations;
-    for (auto& layer : net->tail) {
+
+    for (size_t l = 0; l < net->tail.size(); ++l) {
+        AtomPtr layer = net->tail.at(l);
         AtomPtr weights = layer->tail.at(0);
         AtomPtr biases = layer->tail.at(1);
         std::string act = type_check(layer->tail.at(2), STRING)->lexeme;
@@ -338,51 +345,57 @@ AtomPtr fn_nn_train(AtomPtr node, AtomPtr env) {
         add_bias(z, biases);
         pre_activations.push_back(z);
         std::vector<Real> a = z;
-        if (act == "relu") {
-            for (auto& v : a) v = relu(v);
-        } else if (act == "sigmoid") {
-            for (auto& v : a) v = sigmoid(v);
-        } else {
-            error("unknown activation", layer);
-        }
+        if (act == "relu") for (auto& v : a) v = relu(v);
+        else if (act == "sigmoid") for (auto& v : a) v = sigmoid(v);
+        else if (act == "softmax") softmax(a);
+        else error("unknown activation", layer);
         activations.push_back(a);
     }
-    // Backward pass: compute gradients
-    std::vector<Real> delta(activations.back().size());
-    for (size_t i = 0; i < delta.size(); ++i) {
-        delta[i] = activations.back()[i] - y[i];
+
+    Real loss = 0;
+    for (size_t i = 0; i < activations.back().size(); ++i) {
+        loss -= y[i] * std::log(std::max(activations.back()[i], 1e-12));
     }
-    apply_activation_deriv(delta, pre_activations.back(), type_check(net->tail.back()->tail.at(2), STRING)->lexeme);
+
+    std::vector<Real> delta = activations.back();
+    for (size_t i = 0; i < delta.size(); ++i) {
+        delta[i] -= y[i]; // derivative of softmax + cross-entropy
+    }
+
     for (int l = net->tail.size() - 1; l >= 0; --l) {
         AtomPtr layer = net->tail.at(l);
         AtomPtr weights = layer->tail.at(0);
         AtomPtr biases = layer->tail.at(1);
-        // Update weights
+        std::string act = type_check(layer->tail.at(2), STRING)->lexeme;
+
+        if (act != "softmax") {
+            apply_activation_deriv(delta, pre_activations[l], act);
+        }
+
         for (size_t i = 0; i < weights->tail.size(); ++i) {
             for (size_t j = 0; j < weights->tail.at(i)->tail.size(); ++j) {
-                Real old_w = type_check(weights->tail.at(i)->tail.at(j), NUMBER)->value;
+                Real w = type_check(weights->tail.at(i)->tail.at(j), NUMBER)->value;
                 Real grad = delta[i] * activations[l][j];
-                weights->tail.at(i)->tail.at(j) = make_atom(old_w - lr * grad);
+                weights->tail.at(i)->tail.at(j) = make_atom(w - lr * grad);
             }
         }
-        // Update biases
         for (size_t i = 0; i < biases->tail.size(); ++i) {
-            Real old_b = type_check(biases->tail.at(i), NUMBER)->value;
-            biases->tail.at(i) = make_atom(old_b - lr * delta[i]);
+            Real b = type_check(biases->tail.at(i), NUMBER)->value;
+            biases->tail.at(i) = make_atom(b - lr * delta[i]);
         }
+
         if (l > 0) {
-            // Compute delta for previous layer
             std::vector<Real> new_delta(activations[l].size(), 0.0);
             for (size_t j = 0; j < activations[l].size(); ++j) {
                 for (size_t i = 0; i < weights->tail.size(); ++i) {
                     new_delta[j] += type_check(weights->tail.at(i)->tail.at(j), NUMBER)->value * delta[i];
                 }
             }
-            apply_activation_deriv(new_delta, pre_activations[l-1], type_check(net->tail.at(l-1)->tail.at(2), STRING)->lexeme);
             delta = new_delta;
         }
     }
-    return make_atom(""); // no output needed
+
+    return make_atom(loss);
 }
 using Complex = std::complex<Real>;
 void fft_compute(std::vector<Complex>& a, bool invert) {
