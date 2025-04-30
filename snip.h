@@ -129,10 +129,14 @@ void error (const std::string& msg, AtomPtr n) {
 		print (n, err);
 	}
     if (eval_stack.size () > 1) {
-        err << "\nstack trace:" << std::endl;
+        err << "\n\n[--- stack trace ---]" << std::endl;
+		int ctx = eval_stack.size (); 
         for (auto it = eval_stack.rbegin(); it != eval_stack.rend(); ++it) {
-            print(*it, err) << std::endl;
+        	err << ctx << "> "; print(*it, err) << std::endl;
+			if (ctx > 1) err << std::endl;
+			--ctx;
         }
+		err << "[--- end of stack trace ---]\n";
     }	
 	throw std::runtime_error (err.str ());
 }
